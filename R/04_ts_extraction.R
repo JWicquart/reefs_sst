@@ -10,17 +10,20 @@ load(file = "data/03_tropical-storms_raw/data_cyclones.RData")
 data_cyclones <- st_transform(data_cyclones, crs = 7801) %>% # CRS in meters
   st_make_valid()
 
-# 3. Import data on benthic cover and extract sites coordinates ----
+# 3. Import reefs distribution data and modify CRS ----
 
-load("data/04_benthic-cover_site-coordinates.RData")
+load("data/data_joined.RData")
 
-site_coord_points <- site_coordinates %>% 
-  st_as_sf(., coords = c("long", "lat"), crs = "+proj=longlat +datum=WGS84") %>% 
-  st_transform(., crs = 7801) # CRS in meters
 
-rm(site_coordinates)
+ggplot() +
+  geom_sf(data = data_joined)
 
-# 4. Create a buffer around each sites coordinates ----
 
-site_coord_buffer <- site_coord_points %>% 
-  st_buffer(., dist = 100000) # 100,000 m = 100 km
+data_joined <- data_joined %>% 
+  st_transform(crs = 7801) %>% # CRS in meters
+  st_make_valid() %>% 
+  st_buffer(dist = 100000)
+
+
+ggplot() +
+  geom_sf(data = data_joined)

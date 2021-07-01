@@ -27,20 +27,21 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align =
 # 1. Source functions ----
 
 source("functions/graphical_par.R")
-source("functions/theme_graph.R")
+source("functions/theme_map.R")
 
 # 2. Required packages ----
 
 library(tidyverse) # Core tidyverse packages
 library(sf) # To plot maps
+sf_use_s2(FALSE) # Switch from S2 to GEOS
 
 # 3. Set theme_graph() as the default ggplot theme ----
 
-theme_set(theme_graph())
+theme_set(theme_map())
 
-# 4. Load data ----
+# 4. Define the CRS ----
 
-
+crs_selected <- "+proj=eqearth"
 
 ```
 
@@ -54,10 +55,151 @@ theme_set(theme_graph())
 
 # 2. Dataviz
 
+# 2.0 Background maps
+
+```{r}
+
+# 1. Load background maps ----
+
+data_map <- read_sf("./../data/00_natural-earth-data/ne_10m_land/ne_10m_land.shp") %>% 
+  st_transform(crs = 4326) %>% 
+  st_transform(crs = crs_selected)
+
+# 2. Create the border of background map ----
+
+lats <- c(90:-90, -90:90, 90)
+longs <- c(rep(c(180, -180), each = 181), 180)
+
+background_map_border <- list(cbind(longs, lats)) %>%
+  st_polygon() %>%
+  st_sfc(crs = 4326) %>% 
+  st_sf() %>%
+  st_transform(crs = crs_selected)
+
+```
+
+# 2.1 Coral reefs distribution
+
+```{r}
+
+# 1. Load Reefs at Risk data ----
+
+data_rar <- read_sf("./../data/02_reefs-at-risk_reef-data/reef_500_poly.shp") %>% 
+  st_transform(crs = 4326) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_transform(crs = crs_selected)
+
+# 2. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral distribution
+  geom_sf(data = data_rar, col = "#2abb9b", size = 2) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map)
+
+# 3. Save the figure ----
+
+ggsave("./../figs/01_coral-reefs-distribution.png", width = 7, height = 4, dpi = 600)
+
+```
+
+# 2.2 Coral reefs ecoregions
+
+```{r}
+
+# 1. Load ecoregions data ----
+
+load("./../data/ecoregions.RData")
+load("./../data/data_joined.RData")
+
+ecoregions <- ecoregions %>% 
+  filter(Ecoregion %in% unique(data_joined$Ecoregion)) %>% 
+  st_transform(crs = 4326) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid() %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid() %>% 
+  st_transform(crs = crs_selected) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid()
+
+# 2. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral reefs ecoregions
+  geom_sf(data = ecoregions, aes(fill = Ecoregion), show.legend = FALSE) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map)
+
+# 3. Save the figure ----
+
+ggsave("./../figs/02_coral-reefs-ecoregions.png", width = 7, height = 4, dpi = 600)
+
+```
+
+# 2.3 SST
+
 ```{r}
 
 
 
+
+```
+
+# 2.4 TS
+
+```{r}
+
+# 1. Load TS data ----
+
+load(file = "./../data/03_tropical-storms_raw/data_cyclones.RData")
+
+data_cyclones <- data_cyclones %>% 
+  group_by(ts_id) %>% 
+  mutate(wind_speed = max(wind_speed)) %>% 
+  st_transform(crs = 4326) %>% 
+  st_make_valid() %>% 
+  # Transform points to lines
+  group_by(ts_id, wind_speed) %>%
+  summarise(do_union = FALSE) %>%
+  st_cast("LINESTRING") %>% 
+  # Remove linestring with only one point (else error with the st_intersection() function)
+  mutate(n = str_count(geometry, ",")) %>% 
+  filter(n > 1) %>% 
+  select(-n) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid() %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid() %>% 
+  st_transform(crs = crs_selected) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid()
+
+# 2. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Tropical storms data
+  geom_sf(data = data_cyclones, aes(col = wind_speed)) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
+  scale_colour_gradientn(colours = c("#03a678", "#446cb3", "#e47833", "#d91e18"), limits = c(0, 350)) +
+  guides(col = guide_colourbar(title = "Maximum wind speed (km.h²)",
+                               title.position = "top",
+                               barwidth = 15,
+                               barheight = 1,
+                               frame.colour = "black",
+                               frame.linewidth = 1,
+                               ticks.colour = "black"))
+
+# 3. Save the figure ----
+
+ggsave("./../figs/03_tropical-storms-paths.png", width = 7, height = 5, dpi = 600)
 
 ```
 

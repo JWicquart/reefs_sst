@@ -24,14 +24,12 @@ rasterOptions(maxmemory = 1e+09) # Set max memory for raster
 
 crs_used <- 4326
 
+# 5. List of NetCDF4 files ----
 
+#ncdf_files <- list.files(path = "data/01_sst_raw/", pattern = "\\.nc$", full.names = TRUE)
+ncdf_files <- list.files(path = "/home/jwicquart/nasephe/disturbance/data/05_sst_raw", pattern = "\\.nc$", full.names = TRUE)
 
-
-# 3. List of NetCDF4 files ----
-
-ncdf_files <- list.files(path = "data/01_sst_raw/", pattern = "\\.nc$", full.names = TRUE)
-
-# 4. Check if files are missing ----
+# 6. Check if files are missing ----
 
 real_files_list <- str_remove_all(str_split_fixed(ncdf_files, "_", n = 5)[,5], "\\.nc")
 
@@ -41,60 +39,39 @@ setdiff(theoric_files_list, real_files_list)
 
 rm(theoric_files_list, real_files_list)
 
-# 5. File of site coordinates ----
+# 7. File of site coordinates ----
 
 load("data/data_joined.RData")
 
-# 5.5 Transform to sp --
+# 7.1 Transform to sp --
 
 data_reefs <- as_Spatial(data_joined)
 
-# 5.6 Plot for visual inspection --
+# 7.2 Plot for visual inspection --
 
-png("figs/05-sst_method-polygon_dataviz.png", width = 1000, height = 500)
+#png("figs/05-sst_method-polygon_dataviz.png", width = 1000, height = 500)
 
-plot(raster(ncdf_files[1], varname = "analysed_sst"))
+#plot(raster(ncdf_files[1], varname = "analysed_sst"))
 
-plot(gcrmn_sp, add = TRUE, border = "black")
+#plot(gcrmn_sp, add = TRUE, border = "black")
 
-dev.off()
+#dev.off()
 
-
-
-
+# 8. Apply the function fo each file ----
 
 results_sst_raw <- enframe(ncdf_files, name = NULL, value = "paths") %>% 
   dplyr::mutate(values = future_map(paths, ~extractncdf_raster(data_raster = ., data_polygon = data_reefs)))
 
+# 9. Unlist and select variables ----
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 6. Extract SST values ----
-
-data_dhw <- enframe(ncdf_files, name = NULL, value = "paths") %>% 
-  mutate(values = future_map(paths, ~extractncdf_map(., coordinates = site_coordinates))) %>% 
+results_sst <- results_sst_raw %>% 
   unnest(values) %>% 
-  dplyr::select(-paths)
+  rename(sst = analysed.sea.surface.temperature, ecoregion = Ecoregion) %>% 
+  mutate(date = str_split_fixed(paths, "_", 5)[,5],
+         date = paste(str_sub(date, 1, 4), str_sub(date, 5, 6), str_sub(date, 7, 8), sep = "-"),
+         date = as.Date(date)) %>% 
+  dplyr::select(date, ecoregion, sst)
 
-# 7. Calculation of DHW ----
+# 10. Export the file ----
 
-data_dhw <- dhw_calculation(data = data_dhw) %>% 
-  mutate(date = as.Date(date),
-         year = year(date),
-         month = month(date))
-
-# 8. Export the file ----
-
-save(data_dhw, file = "data/05_sst_dhw-by-site-and-day.RData")
+save(results_sst, file = "data/02_sst-extracted.RData")
