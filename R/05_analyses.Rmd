@@ -1,0 +1,75 @@
+---
+title: "Analyses"
+author : "Jeremy Wicquart"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    fig_caption: yes
+    theme: "cosmo"
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+
+```
+
+# Defining functions and packages
+
+```{r base}
+
+# 1. Source functions ----
+
+source("functions/graphical_par.R")
+source("functions/theme_graph.R")
+
+# 2. Required packages ----
+
+library(tidyverse) # Core tidyverse packages
+library(sf) # To plot maps
+
+# 3. Set theme_graph() as the default ggplot theme ----
+
+theme_set(theme_graph())
+
+# 4. Load data ----
+
+
+
+```
+
+# 1. DHW calculation
+
+```{r}
+
+
+
+```
+
+# 2. Dataviz
+
+```{r}
+
+
+
+
+```
+
+# Reproducibility
+
+```{r reprod}
+
+# 1. Reproducibility ----
+
+sessionInfo()
+
+```
+
+---
+Jeremy WICQUART | jeremywicquart@gmail.com | `r format(Sys.time())`
