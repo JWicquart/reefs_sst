@@ -27,12 +27,12 @@ data_cyclones <- read.csv(textConnection(all_content), header = TRUE, stringsAsF
          STORM_SPEED = STORM_SPEED*1.852) %>% # Convert from knots to km/h
   rename(ts_id = SID, name = NAME, time = ISO_TIME,
          lat = LAT, long = LON, storm_speed = STORM_SPEED, wind_speed = WIND_SPEED) %>% 
-  mutate(saffir = case_when(wind_speed >= 64 & wind_speed <= 118 ~ "TS",
-                            wind_speed >= 119 & wind_speed <= 153 ~ "1",
-                            wind_speed >= 154 & wind_speed <= 177 ~ "2",
-                            wind_speed >= 178 & wind_speed <= 210 ~ "3",
-                            wind_speed >= 211 & wind_speed <= 251 ~ "4",
-                            wind_speed >= 252 ~ "5")) %>% 
+  mutate(saffir = case_when(wind_speed >= 64 & wind_speed <= 118 ~ 0,
+                            wind_speed >= 119 & wind_speed <= 153 ~ 1,
+                            wind_speed >= 154 & wind_speed <= 177 ~ 2,
+                            wind_speed >= 178 & wind_speed <= 210 ~ 3,
+                            wind_speed >= 211 & wind_speed <= 251 ~ 4,
+                            wind_speed >= 252 ~ 5)) %>% 
   mutate(long = ifelse(long > 180, long - 360, long)) %>% # Transform long greater than 180
   st_as_sf(., coords = c("long", "lat"), crs = 4326) %>% 
   st_make_valid()

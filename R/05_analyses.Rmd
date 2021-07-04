@@ -28,12 +28,16 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align =
 
 source("functions/graphical_par.R")
 source("functions/theme_map.R")
+source("functions/theme_graph.R")
+source("functions/dhw_calculation.R")
 
 # 2. Required packages ----
 
 library(tidyverse) # Core tidyverse packages
 library(sf) # To plot maps
 sf_use_s2(FALSE) # Switch from S2 to GEOS
+library(lubridate)
+library(ggpubr)
 
 # 3. Set theme_graph() as the default ggplot theme ----
 
@@ -49,7 +53,108 @@ crs_selected <- "+proj=eqearth"
 
 ```{r}
 
+# 1. Load data ----
 
+load("./../data/02_sst-extracted.RData")
+
+# 2. DHW and SST anomaly calculation ----
+
+results_sst <- dhw_calculation(results_sst)
+
+```
+
+# 2. Plot by ecoregion
+
+```{r}
+
+# 1. SST trends ----
+
+# A. Create the empty list --
+
+plot_sst <- list() # Empty list
+
+# B. Loop --
+
+for (i in unique(results_sst$ecoregion)) {
+  
+  data_i <- results_sst %>% 
+    filter(ecoregion == i)
+  
+  plot_i <- ggplot(data = data_i, aes(x = date, y = sst)) +
+    geom_path() +
+    labs(x = "Year", y = "SST (°C)", title = unique(data_i$ecoregion)) +
+    geom_hline(yintercept = unique(data_i$threshold), linetype = "dashed", color = "#ec644b") +
+    theme_graph() +
+    theme(axis.title.x = element_blank()) +
+    lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
+
+  plot_sst[[i]] <- plot_i # add each plot into plot list
+  
+}
+
+# 2. SST anomaly trends ----
+
+# A. Create the empty list --
+
+plot_anom <- list() # Empty list
+
+# B. Loop --
+
+for (i in unique(results_sst$ecoregion)) {
+  
+  data_i <- results_sst %>% 
+    filter(ecoregion == i)
+  
+  plot_i <- ggplot(data = data_i, aes(x = date, y = sst_anomaly_mean)) +
+    geom_path() +
+    geom_ribbon(aes(ymin = 0, ymax = sst_anomaly_mean, fill = sst_anomaly_type), alpha = 0.5) +
+    scale_fill_identity() +
+    labs(x = "Year", y = "SST anomaly (°C)") +
+    theme_graph() +
+    theme(axis.title.x = element_blank()) +
+    lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
+
+  plot_anom[[i]] <- plot_i # add each plot into plot list
+  
+}
+
+# 3. DHW trends ----
+
+# A. Create the empty list --
+
+plot_dhw <- list() # Empty list
+
+# B. Loop --
+
+for (i in unique(results_sst$ecoregion)) {
+  
+  data_i <- results_sst %>% 
+    filter(ecoregion == i) %>% 
+    drop_na(dhw)
+  
+  plot_i <- ggplot(data = data_i, aes(x = date, y = dhw)) +
+    geom_path() +
+    geom_ribbon(aes(ymin = 0, ymax = dhw), fill = "#ec644b", alpha = 0.5) +
+    labs(x = "Year", y = "DHW (°C)") +
+    theme_graph() +
+    lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
+
+  plot_dhw[[i]] <- plot_i # add each plot into plot list
+  
+}
+
+# 4. Loop to combine and export plots ----
+
+for (i in names(plot_sst)) {
+  
+  plot_i <- ggarrange(plotlist = c(plot_sst[i], plot_anom[i], plot_dhw[i]),
+                      ncol = 1, nrow = 3, heights = c(1.1, 1, 1), align = "v")
+  
+  ggsave(plot = plot_i, 
+         filename = paste0("../figs/01_sst-anom-dhw_", str_replace_all(tolower(i), " ", "-"), ".png"),
+         width = 6, height = 11)
+  
+}
 
 ```
 
@@ -189,7 +294,7 @@ ggplot() +
   # Background map
   geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
   scale_colour_gradientn(colours = c("#03a678", "#446cb3", "#e47833", "#d91e18"), limits = c(0, 350)) +
-  guides(col = guide_colourbar(title = "Maximum wind speed (km.h²)",
+  guides(col = guide_colourbar(title = expression(paste("Maximum wind speed (km.", h^{-2}, ")")),
                                title.position = "top",
                                barwidth = 15,
                                barheight = 1,
@@ -200,6 +305,155 @@ ggplot() +
 # 3. Save the figure ----
 
 ggsave("./../figs/03_tropical-storms-paths.png", width = 7, height = 5, dpi = 600)
+
+```
+
+
+```{r}
+
+load(file = "./../data/03_tropical-storms_raw/data_cyclones.RData")
+
+data_cyclones <- data_cyclones %>% 
+  group_by(ts_id, saffir) %>% 
+  mutate(wind_speed = max(wind_speed),
+         saffir = max(saffir)) %>% 
+  ungroup() %>% 
+  drop_na(saffir) %>%
+  mutate(year = year(time)) %>% 
+  group_by(year, saffir) %>% 
+  summarise(n_event = n()) %>% 
+  ungroup() %>% 
+  tidyr::complete(year, saffir, fill = list(n_event = 0)) %>% 
+  filter(saffir != 0) %>% 
+  mutate(saffir = as.factor(saffir)) %>% 
+  filter(year >= 1960)
+
+
+# test 
+
+library(ggstream)
+
+ggplot(data = data_cyclones, aes(x = year, y = n_event, fill = saffir)) +
+  geom_bar(stat = "identity") +
+  theme_graph()
+
+ggplot(data = data_cyclones, aes(x = year, y = n_event, fill = saffir)) +
+  geom_stream(color = "black", lwd = 0.1) +
+  theme_graph()
+
+
+
+```
+
+```{r fig.width=15}
+
+library(ggridges)
+
+load(file = "./../data/03_tropical-storms_raw/data_cyclones.RData")
+
+data_cyclones <- data_cyclones %>% 
+  group_by(ts_id) %>% 
+  mutate(wind_speed = max(wind_speed),
+         year = year(time)) %>% 
+  group_by(ts_id, name, year, wind_speed) %>% 
+  distinct() %>% 
+  filter(year >= 1970)
+
+ggplot(data = data_cyclones, aes(x = wind_speed, y = as.factor(year))) +
+  geom_density_ridges(fill = "#3498db") +
+  theme_graph()
+
+
+```
+
+```{r}
+
+load(file = "./../data/03_tropical-storms_raw/data_cyclones.RData")
+
+data_cyclones <- data_cyclones %>% 
+  group_by(ts_id) %>% 
+  mutate(wind_speed = max(wind_speed),
+         year = year(time)) %>% 
+  group_by(ts_id, name, year, wind_speed) %>% 
+  distinct() %>% 
+  filter(year >= 1970)
+
+ggplot(data = data_cyclones, aes(x = year, y = wind_speed, group = year)) +
+  geom_violin(fill = "#3498db", alpha = 0.25, col = NA) +
+  geom_point(shape = 1, col = "#5c97bf", alpha = 0.5, size = 1) +
+  theme_graph() +
+  labs(x = "Year", 
+       y = expression(paste("Maximum wind speed (km.", h^{-2}, ")")))
+
+```
+
+# Composed maps
+
+```{r}
+
+# 1. Load ecoregions data ----
+
+load("./../data/ecoregions.RData")
+load("./../data/data_joined.RData")
+
+ecoregions <- ecoregions %>% 
+  filter(Ecoregion %in% unique(data_joined$Ecoregion)) %>% 
+  st_transform(crs = 4326) %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid() %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES")) %>% 
+  st_make_valid()
+
+ecoregions2 <- ecoregions %>% 
+  mutate(region = case_when(Ecoregion %in% c("Bermuda",
+                                             "Belize and west Caribbean",
+                                             "Cuba and Cayman Islands",
+                                             "Bahamas and Florida Keys",
+                                             "Bay of Campeche, Yucatan, Gulf of Mexico",
+                                             "Flower Garden Banks, Gulf of Mexico",
+                                             "Hispaniola, Puerto Rico and Lesser Antilles",
+                                             "Netherlands Antilles and south Caribbean",
+                                             "Jamaica") ~ "Caribbean")) %>% 
+  filter(region == "Caribbean")
+
+
+# 1. Load background maps ----
+
+data_map <- read_sf("./../data/00_natural-earth-data/ne_10m_land/ne_10m_land.shp") %>% 
+  st_transform(crs = 4326)
+
+# 2. Create the border of background map ----
+
+lats <- c(90:-90, -90:90, 90)
+longs <- c(rep(c(180, -180), each = 181), 180)
+
+background_map_border <- list(cbind(longs, lats)) %>%
+  st_polygon() %>%
+  st_sfc(crs = 4326) %>% 
+  st_sf()
+
+
+
+
+# 2. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral reefs ecoregions
+  geom_sf(data = ecoregions2, aes(fill = Ecoregion)) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
+  coord_sf(xlim = c(-100, -40), ylim = c(7, 35)) +
+  theme(legend.position = "right",
+        legend.direction = "vertical",
+        legend.text = element_text(size = 8),
+        legend.justification = "left")
+
+# 3. Save the figure ----
+
+ggsave("./../figs/02_coral-reefs-ecoregions.png", width = 7, height = 4, dpi = 600)
+
 
 ```
 
