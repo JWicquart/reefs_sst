@@ -25,6 +25,8 @@ dhw_calculation <- function(data){
     dplyr::arrange(date) %>% 
     # 7 days * 12 weeks = 84 days
     dplyr::mutate(dhw = roll_sum(x = delta, n = 84, align = "center", fill = NA)) %>% 
+    # Divide by 7
+    dplyr::mutate(dhw = dhw/7) %>% 
     dplyr::select(-delta, -mean) %>% 
     # Calculate SST anomaly
     mutate(mean = mean(sst, na.rm = TRUE),

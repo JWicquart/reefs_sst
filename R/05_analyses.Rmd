@@ -38,6 +38,7 @@ library(sf) # To plot maps
 sf_use_s2(FALSE) # Switch from S2 to GEOS
 library(lubridate)
 library(ggpubr)
+library(magick) # To create GIF
 
 # 3. Set theme_graph() as the default ggplot theme ----
 
@@ -135,7 +136,7 @@ for (i in unique(results_sst$ecoregion)) {
   plot_i <- ggplot(data = data_i, aes(x = date, y = dhw)) +
     geom_path() +
     geom_ribbon(aes(ymin = 0, ymax = dhw), fill = "#ec644b", alpha = 0.5) +
-    labs(x = "Year", y = "DHW (°C)") +
+    labs(x = "Year", y = "DHW (°C-weeks)") +
     theme_graph() +
     lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
 
@@ -155,6 +156,32 @@ for (i in names(plot_sst)) {
          width = 6, height = 11)
   
 }
+
+```
+
+```{r}
+
+ggplot(data = results_sst, aes(x = date, y = sst_anomaly_mean, group = ecoregion)) +
+    annotate("rect", xmin = as.Date("1997-01-01"), xmax = as.Date("1999-12-31"), 
+             ymin = 0, ymax = 1, fill = "#ec644b", alpha = 0.5) +
+    annotate("rect", xmin = as.Date("2009-01-01"), xmax = as.Date("2011-12-31"), 
+             ymin = 0, ymax = 1.1, fill = "#ec644b", alpha = 0.5) +
+    annotate("rect", xmin = as.Date("2015-01-01"), xmax = as.Date("2017-12-31"), 
+             ymin = 0, ymax = 1.35, fill = "#ec644b", alpha = 0.5) +
+    geom_path() +
+    labs(x = "Year", y = "SST anomaly (°C)") +
+    theme_graph() +
+    lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
+
+```
+
+```{r}
+
+ggplot(data = results_sst, aes(x = date, y = dhw, group = ecoregion)) +
+    geom_path() +
+    labs(x = "Year", y = "DHW (°C-weeks)") +
+    theme_graph() +
+    lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
 
 ```
 
@@ -245,6 +272,136 @@ ggplot() +
 ggsave("./../figs/02_coral-reefs-ecoregions.png", width = 7, height = 4, dpi = 600)
 
 ```
+
+# 2.3 Max DHW by ecoregion and year
+
+```{r}
+
+# 1. Calculate max DHW by ecoregion and year ----
+
+results_sst <- results_sst %>% 
+  mutate(year = year(date)) %>% 
+  group_by(year, ecoregion) %>% 
+  summarise(max_dhw = max(dhw, na.rm = TRUE))
+
+# 2. Join with ecoregion polygon ----
+
+ecoregions2 <- ecoregions %>% 
+  select(Ecoregion) %>% 
+  left_join(results_sst, ., by = c("ecoregion" = "Ecoregion")) %>% 
+  st_as_sf()
+
+# 3. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral reefs ecoregions
+  geom_sf(data = ecoregions2, aes(fill = max_dhw), color = NA) +
+  facet_wrap(~year, ncol = 4) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
+  scale_fill_gradientn(colours = c("white", "#03a678", "#446cb3", "#e47833", "#d91e18")) +
+  guides(fill = guide_colourbar(title = "Maximum DHW (°C-weeks)",
+                                title.position = "top",
+                                barwidth = 15,
+                                barheight = 1,
+                                frame.colour = "black",
+                                frame.linewidth = 1,
+                                ticks.colour = "black"))
+
+# 4. Save the figure ----
+
+ggsave("./../figs/03_max-dhw-by-ecoregion-and-year.png", width = 22, height = 25, dpi = 600)
+
+```
+
+# GIF
+
+```{r}
+
+# 1. Loop to produce each individual figure by year ----
+
+for(i in unique(ecoregions2$year)){
+  
+  data_i <- ecoregions2 %>% 
+    filter(year == i)
+  
+  plot_i <- ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral reefs ecoregions
+  geom_sf(data = data_i, aes(fill = max_dhw), color = NA) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
+  labs(title = as.character(i)) +
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "white", colour = NA),
+        plot.background = element_rect(fill = "white")) +
+  scale_fill_gradientn(colours = c("white", "#03a678", "#446cb3", "#e47833", "#d91e18"), limits = c(0, 8)) +
+  guides(fill = guide_colourbar(title = "Maximum DHW (°C-weeks)",
+                                title.position = "top",
+                                barwidth = 15,
+                                barheight = 1,
+                                frame.colour = "black",
+                                frame.linewidth = 1,
+                                ticks.colour = "black"))
+  
+  ggsave(plot = plot_i, 
+         filename = paste0("./../figs/03_max-dhw-by-ecoregion-gif", as.character(i),".png"), 
+         width = 8, height = 5, dpi = 600)
+
+}
+
+# 2. List of individual figures ----
+
+imgs <- list.files("./../figs/", pattern = "max-dhw-by-ecoregion-gif", full.names = TRUE)
+img_list <- lapply(imgs, image_read)
+
+# 3. Join the images together ----
+
+img_joined <- image_join(img_list)
+
+# 4. Create the animation at 2 FPS ----
+
+img_animated <- image_animate(img_joined, fps = 1)
+
+# 5. Export the GIF ----
+
+image_write(image = img_animated, path = "./../figs/03_gif-max-dhw-by-ecoregion.gif")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 2.3 SST
 
