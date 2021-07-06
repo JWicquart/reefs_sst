@@ -176,6 +176,10 @@ for (i in names(plot_sst)) {
   
 }
 
+# 5. Remove useless objects ----
+
+rm(plot_sst, plot_anom, plot_dhw, plot_i)
+
 ```
 
 # 2.2 Time-series decomposition
@@ -210,6 +214,10 @@ for (i in unique(results_sst$ecoregion)) {
 
 }
 
+# 2. Remove useless objects ----
+
+rm(data_i, i)
+
 ```
 
 # 3. Table of SST parameters
@@ -234,13 +242,38 @@ results_sst_table <- results_sst %>%
   select(-before, -after) %>% 
   left_join(., results_sst_mk)
 
+# 3. Remove useless objects ----
+
+rm(results_sst_mk)
+
 ```
 
 ```{r}
 
+# 1. Make the figure ----
 
-hist(results_sst_table$diff_sst)
+ggplot(data = results_sst_table) +
+  geom_vline(xintercept = 0, colour = "#2e3131", linetype = "dotted") +
+  geom_histogram(aes(x = diff_sst), bins = 15, fill = "#dadfe1", color = "#2e3131") +
+  geom_jitter(aes(x = diff_sst, y = -4, fill = diff_sst), shape = 21, 
+              show.legend = FALSE, size = 3, height = 1) +
+  geom_boxplot(aes(x = diff_sst, y = -4), fill = "#dadfe1", color = "#2e3131", outlier.size = 0, 
+               outlier.color = NA, width = 4, alpha = 0.3) +
+  scale_fill_gradientn(colours = c("#22a7f0", "white", "#fad859", "#e47833", "#f03434"),
+                       limits = c(-0.5, 1.5)) +
+  annotate("segment", 
+           x = mean(results_sst_table$diff_sst),
+           xend = mean(results_sst_table$diff_sst), y = 45, yend = 40, colour = "black",
+           arrow = arrow(length = unit(0.05, "inches")), lineend = "round", linejoin = "round") +
+  annotate("text", x = mean(results_sst_table$diff_sst), y = 47, 
+           label = paste0("Mean = ", round(mean(results_sst_table$diff_sst), 3),"°C"), size = 3.5, family = font_choose_graph) +
+  theme_graph() +
+  lims(x = c(-0.5, 1.5), y = c(NA, 50)) +
+  labs(x = expression(Delta*" SST 2020-1985"), y = "Number of ecoregions")
 
+# 2. Save the figure ----
+
+ggsave("./../figs/04_distribution-sst-diff-2020-1985.png", width = 7, height = 4, dpi = 600)
 
 ```
 
@@ -392,6 +425,77 @@ ggplot() +
 ggsave("./../figs/02_coral-reefs-ecoregions.png", width = 7, height = 4, dpi = 600)
 
 ```
+
+# 2.3 SST increase 2020-1985
+
+```{r}
+
+# 1. Join with ecoregion polygon ----
+
+ecoregions_delta_sst <- ecoregions %>% 
+  select(Ecoregion) %>% 
+  left_join(results_sst_table, ., by = c("ecoregion" = "Ecoregion")) %>% 
+  st_as_sf()
+
+# 2. Make the figure ----
+
+ggplot() +
+  # Background map border
+  geom_sf(data = background_map_border, fill = "#56B4E950", color = "grey30", size = 0.5/.pt) +
+  # Coral reefs ecoregions
+  geom_sf(data = ecoregions_delta_sst, aes(fill = diff_sst), color = NA) +
+  # Background map
+  geom_sf(data = data_map, fill = col_fill_map, col = col_color_map) +
+  scale_fill_gradientn(colours = c("#22a7f0", "white", "#fad859", "#e47833", "#f03434"),
+                       limits = c(-0.5, 1.5)) +
+  guides(fill = guide_colourbar(title = expression(Delta*" SST 2020-1985"),
+                                title.position = "top",
+                                barwidth = 15,
+                                barheight = 1,
+                                frame.colour = "black",
+                                frame.linewidth = 1,
+                                ticks.colour = "black"))
+
+# 3. Save the figure ----
+
+ggsave("./../figs/03_map-delta-sst-2020-1985.png", width = 7, height = 4, dpi = 600)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 2.3 Max DHW by ecoregion and year
 
