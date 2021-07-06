@@ -30,6 +30,7 @@ source("functions/graphical_par.R")
 source("functions/theme_map.R")
 source("functions/theme_graph.R")
 source("functions/dhw_calculation.R")
+source("functions/ts_decomp.R")
 
 # 2. Required packages ----
 
@@ -373,6 +374,45 @@ image_write(image = img_animated, path = "./../figs/03_gif-max-dhw-by-ecoregion.
 
 ```
 
+# Time-series analysis
+
+```{r fig.height=8, fig.width=5}
+
+# 1. Decompose the time-series into trend, seasonality and random ----
+
+results_sst <- results_sst %>% 
+  group_by(ecoregion) %>% 
+  do(ts_decomp(.))
+
+# 2. Make a loop to produce each figure by ecoregion ----
+
+for (i in unique(results_sst$ecoregion)) {
+  
+  palette_facet <- data.frame(type = c("observed", "trend", "seasonal", "random"), 
+                              color = c("#d64541", "#2abb9b", "#3498db", "#be90d4"))
+  
+  data_i <- results_sst %>% 
+    filter(ecoregion == i) %>% 
+    pivot_longer(., cols = c(sst, trend, seasonal, random), values_to = "value", names_to = "type") %>% 
+    mutate(type = str_replace_all(type, c("sst" = "observed"))) %>% 
+    left_join(., palette_facet) %>% 
+    mutate(type = factor(type, levels = c("observed", "trend", "seasonal", "random")))
+
+  plot_i <- ggplot(data_i, aes(x = date, y = value, color = color)) +
+    geom_path(show.legend = FALSE) +
+    facet_wrap(~type, scales = "free", ncol = 1) +
+    labs(x = "Year", y = "SST (°C)", title = as.character(i)) +
+    theme_graph() +
+    scale_color_identity()
+  
+  ggsave(filename = paste0("./../figs/04_sst-time-series-decomposed-", 
+                           str_replace_all(tolower(i), " ", "-"),
+                           ".png"),
+         width = 6, height = 11)
+
+}
+
+```
 
 
 
