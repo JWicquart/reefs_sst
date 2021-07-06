@@ -31,6 +31,8 @@ source("functions/theme_map.R")
 source("functions/theme_graph.R")
 source("functions/dhw_calculation.R")
 source("functions/ts_decomp.R")
+source("functions/lm_ts.R")
+source("functions/mann_kendall_trend.R")
 
 # 2. Required packages ----
 
@@ -40,6 +42,7 @@ sf_use_s2(FALSE) # Switch from S2 to GEOS
 library(lubridate)
 library(ggpubr)
 library(magick) # To create GIF
+library(trend) # For Mann-Kendall test
 
 # 3. Set theme_graph() as the default ggplot theme ----
 
@@ -51,7 +54,7 @@ crs_selected <- "+proj=eqearth"
 
 ```
 
-# 1. DHW calculation
+# 1. Misc. calculation on SST
 
 ```{r}
 
@@ -63,9 +66,23 @@ load("./../data/02_sst-extracted.RData")
 
 results_sst <- dhw_calculation(results_sst)
 
+# 3. Decompose the time-series into trend, seasonality and random ----
+
+results_sst <- results_sst %>% 
+  group_by(ecoregion) %>% 
+  do(ts_decomp(.))
+
+# 4. Fit linear model ----
+
+results_sst <- results_sst %>% 
+  group_by(ecoregion) %>% 
+  do(lm_ts(.))
+
 ```
 
-# 2. Plot by ecoregion
+# 2. SST description plot by ecoregion
+
+# 2.1 SST, SST anomaly and DHW
 
 ```{r}
 
@@ -82,10 +99,11 @@ for (i in unique(results_sst$ecoregion)) {
   data_i <- results_sst %>% 
     filter(ecoregion == i)
   
-  plot_i <- ggplot(data = data_i, aes(x = date, y = sst)) +
-    geom_path() +
+  plot_i <- ggplot(data = data_i) +
+    geom_path(aes(x = date, y = sst)) +
     labs(x = "Year", y = "SST (°C)", title = unique(data_i$ecoregion)) +
-    geom_hline(yintercept = unique(data_i$threshold), linetype = "dashed", color = "#ec644b") +
+    geom_hline(yintercept = unique(data_i$threshold), linetype = "dashed", color = "red") +
+    geom_path(aes(x = date, y = sst_fit), color = "red", size = 1) +
     theme_graph() +
     theme(axis.title.x = element_blank()) +
     lims(x = c(as.Date("1985-01-01"), as.Date("2020-12-31")))
@@ -159,6 +177,107 @@ for (i in names(plot_sst)) {
 }
 
 ```
+
+# 2.2 Time-series decomposition
+
+```{r}
+
+# 1. Make a loop to produce each figure by ecoregion ----
+
+for (i in unique(results_sst$ecoregion)) {
+  
+  palette_facet <- data.frame(type = c("observed", "trend", "seasonal", "random"), 
+                              color = c("#d64541", "#2abb9b", "#3498db", "#be90d4"))
+  
+  data_i <- results_sst %>% 
+    filter(ecoregion == i) %>% 
+    pivot_longer(., cols = c(sst, trend, seasonal, random), values_to = "value", names_to = "type") %>% 
+    mutate(type = str_replace_all(type, c("sst" = "observed"))) %>% 
+    left_join(., palette_facet) %>% 
+    mutate(type = factor(type, levels = c("observed", "trend", "seasonal", "random")))
+
+  plot_i <- ggplot(data_i, aes(x = date, y = value, color = color)) +
+    geom_path(show.legend = FALSE) +
+    facet_wrap(~type, scales = "free", ncol = 1) +
+    labs(x = "Year", y = "SST (°C)", title = as.character(i)) +
+    theme_graph() +
+    scale_color_identity()
+  
+  ggsave(filename = paste0("./../figs/04_sst-time-series-decomposed-", 
+                           str_replace_all(tolower(i), " ", "-"),
+                           ".png"),
+         width = 6, height = 11)
+
+}
+
+```
+
+# 3. Table of SST parameters
+
+```{r}
+
+# 1. Calculate significance of the SST slope (Mann-Kendall) ----
+
+results_sst_mk <- results_sst %>% 
+  group_by(ecoregion) %>% 
+  do(mann_kendall_trend(.))
+
+# 2. Calculate SST difference between 2000 and 1985 ----  
+
+results_sst_table <- results_sst %>% 
+  select(ecoregion, mean, date, threshold, sst_fit) %>% 
+  filter(date == max(date) | date == min(date)) %>% 
+  mutate(date = str_replace_all(date, c("1985-01-01" = "before",
+                                        "2020-12-31" = "after"))) %>% 
+  pivot_wider(values_from = sst_fit, names_from = date) %>% 
+  mutate(diff_sst = after-before) %>% 
+  select(-before, -after) %>% 
+  left_join(., results_sst_mk)
+
+```
+
+```{r}
+
+
+hist(results_sst_table$diff_sst)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r}
 
@@ -373,48 +492,6 @@ img_animated <- image_animate(img_joined, fps = 1)
 image_write(image = img_animated, path = "./../figs/03_gif-max-dhw-by-ecoregion.gif")
 
 ```
-
-# Time-series analysis
-
-```{r fig.height=8, fig.width=5}
-
-# 1. Decompose the time-series into trend, seasonality and random ----
-
-results_sst <- results_sst %>% 
-  group_by(ecoregion) %>% 
-  do(ts_decomp(.))
-
-# 2. Make a loop to produce each figure by ecoregion ----
-
-for (i in unique(results_sst$ecoregion)) {
-  
-  palette_facet <- data.frame(type = c("observed", "trend", "seasonal", "random"), 
-                              color = c("#d64541", "#2abb9b", "#3498db", "#be90d4"))
-  
-  data_i <- results_sst %>% 
-    filter(ecoregion == i) %>% 
-    pivot_longer(., cols = c(sst, trend, seasonal, random), values_to = "value", names_to = "type") %>% 
-    mutate(type = str_replace_all(type, c("sst" = "observed"))) %>% 
-    left_join(., palette_facet) %>% 
-    mutate(type = factor(type, levels = c("observed", "trend", "seasonal", "random")))
-
-  plot_i <- ggplot(data_i, aes(x = date, y = value, color = color)) +
-    geom_path(show.legend = FALSE) +
-    facet_wrap(~type, scales = "free", ncol = 1) +
-    labs(x = "Year", y = "SST (°C)", title = as.character(i)) +
-    theme_graph() +
-    scale_color_identity()
-  
-  ggsave(filename = paste0("./../figs/04_sst-time-series-decomposed-", 
-                           str_replace_all(tolower(i), " ", "-"),
-                           ".png"),
-         width = 6, height = 11)
-
-}
-
-```
-
-
 
 
 
